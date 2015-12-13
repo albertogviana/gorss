@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"flag"
 )
 
-const Url = "http://rss.dw.com/xml/DKpodcast_dwn1_pt"
-const Folder = "/Users/alberto/Documents/Projects/docker/gorss/audio/"
+const URL = "http://rss.dw.com/xml/DKpodcast_dwn%d_pt"
 
 type EnclosureTag struct {
 	XMLName xml.Name `xml:"enclosure"`
@@ -32,8 +32,9 @@ type RssTag struct {
 	Channels []ChannelTag `xml:"channel"`
 }
 
-func GetEpisodeList() []byte {
-	response, err := http.Get(Url)
+func GetEpisodeList(season int) []byte {
+	url := fmt.Sprintf(URL, season)
+	response, err := http.Get(url)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -52,10 +53,10 @@ func GetEpisodeList() []byte {
 
 func GetFilename(url string) string {
 	urlSplit := strings.Split(url, "/")
-	return urlSplit[len(urlSplit)-1]
+	return urlSplit[len(urlSplit) - 1]
 }
 
-func GetEpisode(url string, downloadChannel chan string) {
+func GetEpisode(url string, directory string, downloadChannel chan string) {
 	filename := GetFilename(url)
 
 	fmt.Printf("Getting episode %s \n", filename)
@@ -71,7 +72,7 @@ func GetEpisode(url string, downloadChannel chan string) {
 		fmt.Println(err)
 	}
 
-	err = WriteFile(filename, content)
+	err = WriteFile(directory + "/" + filename, content)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -80,7 +81,7 @@ func GetEpisode(url string, downloadChannel chan string) {
 }
 
 func WriteFile(filename string, content []byte) error {
-	err := ioutil.WriteFile(Folder + filename, content, 0444)
+	err := ioutil.WriteFile(filename, content, 0444)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -88,8 +89,8 @@ func WriteFile(filename string, content []byte) error {
 	return err
 }
 
-func HandleDownload() {
-	r := GetEpisodeList()
+func HandleDownload(season int, directory string) {
+	r := GetEpisodeList(season)
 
 	downloadChannel := make(chan string)
 
@@ -100,7 +101,7 @@ func HandleDownload() {
 	counterEpisodes := 0
 	for _, channel := range rssTag.Channels {
 		for _, item := range channel.Item {
-			go GetEpisode(item.Enclosure.Url, downloadChannel)
+			go GetEpisode(item.Enclosure.Url, directory, downloadChannel)
 			counterEpisodes++
 		}
 	}
@@ -110,6 +111,25 @@ func HandleDownload() {
 	}
 }
 
+func Run() {
+	var seasonNumber = flag.Int("season", 0, "Deutsch warum nicht serie. There are 4 season")
+	var directory = flag.String("save", "", "Folder where the audio will be saved")
+	flag.Parse()
+
+	if *seasonNumber < 1 || *seasonNumber > 4 {
+		fmt.Println("The season number should be between 1 and 4 \n")
+		os.Exit(0)
+	}
+
+	_, err := os.Stat(*directory)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(0)
+	}
+
+	HandleDownload(*seasonNumber, *directory)
+}
+
 func main() {
-	HandleDownload()
+	Run()
 }
